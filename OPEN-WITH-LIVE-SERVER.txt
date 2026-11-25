@@ -1,0 +1,8 @@
+DECIMA PANTRY - START HERE
+
+1. Open this folder in Visual Studio Code.
+2. Right-click index.html.
+3. Click "Open with Live Server".
+
+The actual application starts from index.html.
+No .NET server is required in this version.
