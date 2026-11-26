@@ -361,7 +361,7 @@
     const s = session();
     document.getElementById('app').innerHTML = `<div class="app-shell barista-shell" dir="rtl" lang="ar">${topbar('staff', true)}<main class="page">
       <section class="staff-hero"><div><span class="eyebrow light">شاشة الباريستا</span><h1>طلبات المشروبات</h1><p>استلم الطلب الجديد ليقف الجرس، ثم علّم الطلب كمكتمل بعد التحضير.</p></div><div class="staff-actions"><button class="btn ghost" data-action="enable-bell">🔔 تفعيل / تجربة الجرس</button><button class="btn ghost" data-action="admin-access">🔒 إعدادات الإدارة</button></div></section>
-      <section class="bell-status ${bellEnabled ? 'enabled' : ''} ${cloudEnabled() ? 'shared-online' : 'shared-offline'}"><span class="bell-dot"></span><strong>${bellEnabled ? 'جرس الطلبات مفعّل' : 'اضغط “تفعيل الجرس” مرة واحدة للسماح بالصوت في هذا المتصفح'}</strong><span>${cloudEnabled() ? 'متصل بالطلبات المشتركة — طلبات الهواتف ستظهر هنا تلقائياً' : '⚠ قاعدة البيانات المشتركة غير متصلة — الطلبات من الهواتف الأخرى لن تصل إلى هذا الجهاز'}</span></section>
+      <section class="bell-status ${bellEnabled ? 'enabled' : ''} ${cloudEnabled() ? 'shared-online' : 'shared-offline'}"><span class="bell-dot"></span><strong>${bellEnabled ? 'جرس الطلبات مفعّل — يستمر حتى استلام الطلب' : 'اضغط “تفعيل / تجربة الجرس” مرة واحدة للسماح بالصوت في هذا المتصفح'}</strong><span>${cloudEnabled() ? 'متصل بالطلبات المشتركة — طلبات الهواتف ستظهر هنا تلقائياً' : '⚠ قاعدة البيانات المشتركة غير متصلة — الطلبات من الهواتف الأخرى لن تصل إلى هذا الجهاز'}</span></section>
       <section class="card panel" style="margin-top:16px"><div class="panel-head"><div><h2>الطلبات المباشرة</h2><p>يستمر جرس المقهى في الرنين ما دام هناك طلب جديد لم يتم استلامه.</p></div><button class="btn soft small" data-action="refresh">تحديث</button></div>${renderOrderColumns(true)}</section>
     </main>${bottomNav('staff', true)}</div>`;
     updateBellLoop();
@@ -616,12 +616,21 @@
     const patch = action === 'accept' && o.status === 'New' ? { status: 'Preparing', acceptedAt: nowIso() } : action === 'complete' && o.status === 'Preparing' ? { status: 'Completed', completedAt: nowIso() } : null;
     if (!patch) return;
 
+    // Stop immediately when the Barista acknowledges the final waiting order.
+    // If another New order still exists, its alarm continues.
+    const wasLastNewOrder = action === 'accept' && !data.orders.some(x => x.id !== id && x.status === 'New');
+    if (wasLastNewOrder) clearBellLoop();
+
     if (cloudEnabled()) {
       try {
         setCloudBusy(true);
         await cloudRequest(`/rest/v1/pantry_orders?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: toCloudOrderPatch(patch), auth: true, prefer: 'return=minimal' });
         Object.assign(o, patch); saveCache({ broadcast: false });
-      } catch (err) { toast(humanCloudError(err), 'error'); return; }
+      } catch (err) {
+        toast(humanCloudError(err), 'error');
+        if (wasLastNewOrder) updateBellLoop();
+        return;
+      }
       finally { setCloudBusy(false); }
     } else {
       Object.assign(o, patch); saveCache();
@@ -633,6 +642,8 @@
   }
 
   async function submitLogin(form) {
+    // Prime browser audio during the login gesture so future incoming orders may ring automatically.
+    enableBell(false);
     const fd = new FormData(form);
     const password = String(fd.get('password') || '');
     if (!cloudEnabled()) return toast('Shared database is not configured.', 'error');
@@ -644,8 +655,7 @@
       await syncAllFromCloud(true);
     } catch (err) { toast('تعذر تسجيل الدخول. تحقق من كلمة مرور حساب الموظفين.', 'error'); return; }
     finally { setCloudBusy(false); }
-    enableBell(true);
-    toast('تم تسجيل الدخول.', 'success');
+    toast('تم تسجيل الدخول. جرس الطلبات جاهز.', 'success');
     go('barista');
   }
 
@@ -758,41 +768,132 @@
     data = defaultData(); saveCache(); editingMaterialId = editingDrinkId = editingLocationId = null; ingredientDraft = [{ materialId: data.materials[0]?.id || '', amount: 1 }]; toast('Local demo data reset.', 'success'); renderAdmin();
   }
 
-  // ---------------------- Coffee-shop bell ----------------------
-  const bellAudio = new Audio('assets/coffee-shop-bell.wav');
+  // ---------------------- Persistent Barista order alarm ----------------------
+  // Use Web Audio as the primary alarm so mobile/desktop browsers do not depend on
+  // an external audio file repeatedly restarting. Browser autoplay rules still
+  // require one user gesture; the Staff login primes the audio context.
+  const bellAudio = new Audio('assets/coffee-shop-bell.wav'); // fallback only
   bellAudio.preload = 'auto';
   bellAudio.volume = 1.0;
   let bellEnabled = false;
   let bellTimer = null;
+  let bellCtx = null;
+  let bellMaster = null;
+  const bellNodes = new Set();
+
+  function initBellContext() {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return false;
+    if (!bellCtx) {
+      bellCtx = new AudioCtx();
+      bellMaster = bellCtx.createGain();
+      bellMaster.gain.value = 0.82;
+      bellMaster.connect(bellCtx.destination);
+    }
+    return true;
+  }
 
   function enableBell(playNow = false) {
-    bellEnabled = true;
+    if (initBellContext()) {
+      const resumed = bellCtx.resume();
+      Promise.resolve(resumed).then(() => {
+        bellEnabled = bellCtx.state === 'running';
+        if (bellEnabled && playNow) playCafeBell();
+        if (route() === 'barista') renderBarista();
+      }).catch(() => {
+        bellEnabled = false;
+        if (route() === 'barista') renderBarista();
+      });
+      return;
+    }
+
+    // Very old browser fallback. A user gesture is still required.
     try {
-      bellAudio.currentTime = 0;
+      bellAudio.muted = true;
       const p = bellAudio.play();
-      if (p?.then) p.then(() => { if (!playNow) { bellAudio.pause(); bellAudio.currentTime = 0; } }).catch(() => { bellEnabled = false; });
+      if (p?.then) p.then(() => {
+        bellAudio.pause(); bellAudio.currentTime = 0; bellAudio.muted = false; bellEnabled = true;
+        if (playNow) playCafeBell();
+        if (route() === 'barista') renderBarista();
+      }).catch(() => { bellAudio.muted = false; bellEnabled = false; });
+      else { bellAudio.pause(); bellAudio.currentTime = 0; bellAudio.muted = false; bellEnabled = true; }
     } catch { bellEnabled = false; }
-    setTimeout(() => { if (route() === 'barista') renderBarista(); }, 100);
+  }
+
+  function scheduleBellTone(offset, frequency, duration = 0.18) {
+    if (!bellCtx || bellCtx.state !== 'running' || !bellMaster) return;
+    const now = bellCtx.currentTime + offset;
+    const osc = bellCtx.createOscillator();
+    const gain = bellCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(frequency, now);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.9, now + 0.018);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(gain);
+    gain.connect(bellMaster);
+    bellNodes.add(osc);
+    osc.onended = () => bellNodes.delete(osc);
+    osc.start(now);
+    osc.stop(now + duration + 0.03);
   }
 
   function playCafeBell() {
     if (!bellEnabled) return;
-    try { bellAudio.pause(); bellAudio.currentTime = 0; bellAudio.volume = 1.0; bellAudio.play().catch(() => { bellEnabled = false; clearBellLoop(); if (route() === 'barista') renderBarista(); }); } catch { /* audio optional */ }
+    if (bellCtx && bellCtx.state === 'running') {
+      try {
+        bellMaster.gain.cancelScheduledValues(bellCtx.currentTime);
+        bellMaster.gain.setValueAtTime(0.82, bellCtx.currentTime);
+        // A clear three-note counter-bell pattern, repeated by updateBellLoop.
+        scheduleBellTone(0.00, 880, 0.16);
+        scheduleBellTone(0.24, 1100, 0.16);
+        scheduleBellTone(0.48, 880, 0.20);
+        if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
+      } catch { /* keep the dashboard usable even if audio is unavailable */ }
+      return;
+    }
+
+    // File fallback for browsers without Web Audio.
+    try {
+      bellAudio.pause(); bellAudio.currentTime = 0; bellAudio.volume = 1.0;
+      bellAudio.play().catch(() => { bellEnabled = false; clearBellLoop(); if (route() === 'barista') renderBarista(); });
+    } catch { /* audio optional */ }
   }
 
   function updateBellLoop() {
     const shouldRing = route() === 'barista' && canAccess('barista') && data.orders.some(o => o.status === 'New');
-    if (!shouldRing || !bellEnabled) return clearBellLoop();
+    if (!shouldRing) return clearBellLoop();
+    if (!bellEnabled) return clearBellLoop();
     if (!bellTimer) {
       playCafeBell();
       bellTimer = setInterval(() => {
-        if (route() !== 'barista' || !data.orders.some(o => o.status === 'New')) return clearBellLoop();
+        const stillHasNew = route() === 'barista' && canAccess('barista') && data.orders.some(o => o.status === 'New');
+        if (!stillHasNew) return clearBellLoop();
         playCafeBell();
-      }, 2300);
+      }, 1450);
     }
   }
 
-  function clearBellLoop() { if (bellTimer) clearInterval(bellTimer); bellTimer = null; }
+  function clearBellLoop() {
+    if (bellTimer) clearInterval(bellTimer);
+    bellTimer = null;
+    if (navigator.vibrate) navigator.vibrate(0);
+    if (bellMaster && bellCtx) {
+      try {
+        bellMaster.gain.cancelScheduledValues(bellCtx.currentTime);
+        bellMaster.gain.setValueAtTime(0.0001, bellCtx.currentTime);
+      } catch {}
+    }
+    for (const node of bellNodes) { try { node.stop(); } catch {} }
+    bellNodes.clear();
+    try { bellAudio.pause(); bellAudio.currentTime = 0; } catch {}
+  }
+
+  function resumeBellAfterForeground() {
+    if (bellCtx && bellEnabled && bellCtx.state === 'suspended') {
+      bellCtx.resume().then(updateBellLoop).catch(() => {});
+    } else updateBellLoop();
+  }
 
   function timeAgo(iso) {
     const sec = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
@@ -1014,7 +1115,9 @@
   // Mobile browsers throttle timers while backgrounded. Refresh immediately when the Barista returns.
   window.addEventListener('focus', refreshBaristaFromCloud);
   window.addEventListener('online', refreshBaristaFromCloud);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshBaristaFromCloud(); });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) { refreshBaristaFromCloud(); resumeBellAfterForeground(); }
+  });
 
   async function bootstrap() {
     // First page shown in a new tab must always be Employee Order, unless staff is already signed in in this tab.
