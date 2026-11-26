@@ -488,3 +488,180 @@ body.is-busy button { pointer-events: none; }
   .staff-map-title { align-items: flex-start; flex-direction: column; }
   .staff-desk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Workstation-style Main Hall desk picker */
+.desk-pod {
+  position: relative;
+  padding: 12px 12px 14px;
+  overflow: visible;
+}
+.desk-pod-label {
+  margin-bottom: 12px;
+  font-size: 10px;
+}
+.desk-seat-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  position: relative;
+  z-index: 2;
+}
+.desk-table-shape {
+  position: relative;
+  height: 64px;
+  margin: 2px 9px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #d9cece, #c9baba);
+  border: 1px solid #bca9a9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  box-shadow: inset 0 2px 3px rgba(255,255,255,.65), 0 5px 10px rgba(84,52,52,.08);
+}
+.desk-table-shape::before,
+.desk-table-shape::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  width: 4px;
+  border-radius: 99px;
+  background: rgba(101,79,79,.14);
+}
+.desk-table-shape::before { left: 10px; }
+.desk-table-shape::after { right: 10px; }
+.desk-table-shape span {
+  font-size: 9px;
+  font-weight: 900;
+  color: #5e5151;
+  letter-spacing: .1em;
+}
+.desk-table-shape small {
+  font-size: 8px;
+  color: #7a6c6c;
+  font-weight: 700;
+}
+.desk-seat {
+  min-height: 66px;
+  padding: 4px 4px 2px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  transition: transform .14s ease, background .14s ease, color .14s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.desk-seat:hover {
+  background: rgba(140,27,28,.055);
+  transform: translateY(-1px);
+}
+.desk-seat:focus-visible {
+  outline: 3px solid rgba(140,27,28,.18);
+  outline-offset: 2px;
+}
+.desk-seat.selected {
+  background: rgba(140,27,28,.08);
+  color: var(--burgundy);
+  border: 0;
+  box-shadow: none;
+  transform: scale(1.04);
+}
+.chair-visual {
+  width: 38px;
+  height: 36px;
+  position: relative;
+  display: block;
+}
+.chair-back,
+.chair-seat-cushion,
+.chair-base {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: block;
+  box-sizing: border-box;
+}
+.chair-back {
+  top: 1px;
+  width: 29px;
+  height: 13px;
+  border: 2px solid #c7b9b9;
+  border-bottom-width: 1px;
+  border-radius: 9px 9px 5px 5px;
+  background: #f8f3f3;
+}
+.chair-seat-cushion {
+  top: 12px;
+  width: 33px;
+  height: 15px;
+  border: 2px solid #c7b9b9;
+  border-radius: 7px;
+  background: #e7dede;
+  box-shadow: inset 0 2px 2px rgba(255,255,255,.7);
+}
+.chair-base {
+  top: 27px;
+  width: 21px;
+  height: 7px;
+  border-left: 3px solid #b9a8a8;
+  border-right: 3px solid #b9a8a8;
+}
+.chair-base::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -3px;
+  width: 25px;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 99px;
+  background: #b9a8a8;
+}
+.desk-seat-bottom .chair-visual { transform: rotate(180deg); }
+.desk-seat-bottom strong,
+.desk-seat-bottom .desk-seat-hint { transform: none; }
+.desk-seat strong {
+  position: relative;
+  z-index: 2;
+  font-size: 12px;
+  line-height: 1;
+}
+.desk-seat-hint {
+  font-size: 8px;
+  line-height: 1;
+  color: var(--muted);
+  font-weight: 700;
+  opacity: .8;
+}
+.desk-seat.selected .chair-back,
+.desk-seat.selected .chair-seat-cushion {
+  border-color: var(--burgundy);
+  background: var(--burgundy);
+}
+.desk-seat.selected .chair-base { border-color: var(--burgundy); }
+.desk-seat.selected .chair-base::after { background: var(--burgundy); }
+.desk-seat.selected .desk-seat-hint { color: var(--burgundy); }
+
+@media (max-width: 640px) {
+  .desk-pod { padding: 9px 8px 11px; }
+  .desk-pod-label { margin-bottom: 7px; }
+  .desk-seat-row { gap: 4px; }
+  .desk-table-shape { height: 54px; margin: 0 5px; }
+  .desk-seat { min-height: 62px; padding: 3px 2px; }
+  .chair-visual { width: 34px; height: 33px; }
+  .chair-back { width: 27px; }
+  .chair-seat-cushion { width: 31px; }
+  .desk-seat strong { font-size: 11px; }
+  .desk-seat-hint { font-size: 7px; }
+}

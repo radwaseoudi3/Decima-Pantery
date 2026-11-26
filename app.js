@@ -64,8 +64,7 @@
     ['B', ['B1', 'B2', 'B3', 'B4']],
     ['C', ['C1', 'C2', 'C3', 'C4']],
     ['D', ['D1', 'D2', 'D3', 'D4']],
-    ['E', ['E1', 'E2', 'E3', 'E4']],
-    ['F', ['F1', 'F2', 'F3', 'F4']]
+    ['E', ['E1', 'E2', 'E3', 'E4']]
   ];
 
   const nowIso = () => new Date().toISOString();
@@ -327,12 +326,12 @@
   }
 
   function renderDeskMap() {
-    const pods = MAIN_HALL_PODS.map(([pod, seats]) => `<div class="desk-pod"><div class="desk-pod-label">Desk cluster ${pod}</div><div class="desk-seat-row">${seats.slice(0, 2).map(s => deskSeat(s)).join('')}</div><div class="desk-table-shape"><span>WORKSTATION</span></div><div class="desk-seat-row">${seats.slice(2).map(s => deskSeat(s)).join('')}</div></div>`).join('');
-    return `<div class="main-hall-map"><div class="map-head"><div><span class="eyebrow">MAIN HALL</span><h3>Select your exact desk</h3><p>Tap the seat that best matches where you are sitting.</p></div><div class="map-legend"><span><i></i> Available desk</span><span class="selected-legend"><i></i> Selected</span></div></div><div class="desk-pod-grid">${pods}</div></div>`;
+    const pods = MAIN_HALL_PODS.map(([pod, seats]) => `<div class="desk-pod"><div class="desk-pod-label">Desk cluster ${pod}</div><div class="desk-seat-row desk-seat-row-top">${seats.slice(0, 2).map(s => deskSeat(s, 'top')).join('')}</div><div class="desk-table-shape"><span>WORKSTATION</span><small>Desk cluster ${pod}</small></div><div class="desk-seat-row desk-seat-row-bottom">${seats.slice(2).map(s => deskSeat(s, 'bottom')).join('')}</div></div>`).join('');
+    return `<div class="main-hall-map"><div class="map-head"><div><span class="eyebrow">MAIN HALL</span><h3>Select your exact workstation</h3><p>Tap the chair number that matches where you are sitting.</p></div><div class="map-legend"><span><i></i> Available chair</span><span class="selected-legend"><i></i> Selected</span></div></div><div class="desk-pod-grid">${pods}</div></div>`;
   }
 
-  function deskSeat(id) {
-    return `<button class="desk-seat ${orderUi.deskId === id ? 'selected' : ''}" data-desk="${id}" aria-label="Desk ${id}"><span class="chair-dot"></span><strong>${id}</strong></button>`;
+  function deskSeat(id, side = 'top') {
+    return `<button class="desk-seat desk-seat-${side} ${orderUi.deskId === id ? 'selected' : ''}" data-desk="${id}" aria-label="Workstation chair ${id}"><span class="chair-visual" aria-hidden="true"><i class="chair-back"></i><i class="chair-seat-cushion"></i><i class="chair-base"></i></span><strong>${id}</strong><span class="desk-seat-hint">Tap</span></button>`;
   }
 
   function renderLogin() {
