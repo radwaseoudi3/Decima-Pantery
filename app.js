@@ -540,23 +540,27 @@
     if (cloudEnabled()) {
       try {
         setCloudBusy(true);
-        const result = await cloudRequest('/rest/v1/rpc/place_pantry_order', {
+        const orderId = uid('order');
+        await cloudRequest('/rest/v1/pantry_orders', {
           method: 'POST',
           body: {
-            p_drink_id: drink.id,
-            p_quantity: orderUi.quantity,
-            p_sugar_spoons: drink.id === CUSTOM_DRINK_ID ? 0 : orderUi.sugarSpoons,
-            p_location_id: loc.id,
-            p_desk_id: orderUi.deskId || null,
-            p_custom_location: orderUi.locationId === CUSTOM_LOCATION_ID ? orderUi.customLocation : null,
-            p_custom_request: orderUi.customRequest || null
+            id: orderId,
+            drink_id: drink.id,
+            quantity: orderUi.quantity,
+            sugar_spoons: drink.id === CUSTOM_DRINK_ID ? 0 : orderUi.sugarSpoons,
+            location_id: loc.id,
+            desk_id: orderUi.deskId || null,
+            custom_location: orderUi.locationId === CUSTOM_LOCATION_ID ? orderUi.customLocation : null,
+            custom_request: orderUi.customRequest || null
           },
-          auth: false
+          auth: false,
+          prefer: 'return=minimal'
         });
-        const order = Array.isArray(result) ? result[0] : result;
-        if (order?.id) rememberMyOrder(order.id);
-        await syncCatalogFromCloud();
-        toast(`Order #${order?.number || ''} sent to the pantry.`, 'success');
+        rememberMyOrder(orderId);
+        // The order submission is the critical action. A catalog refresh is best-effort and
+        // must never turn a successfully submitted order into a false failure message.
+        try { await syncCatalogFromCloud(); } catch (syncErr) { console.warn('Catalog refresh after order failed:', syncErr); }
+        toast('Order sent to the pantry.', 'success');
       } catch (err) {
         toast(humanCloudError(err), 'error');
         return;
@@ -915,7 +919,12 @@
     if (msg.includes('admin_password_too_short')) return 'Admin password must be at least 6 characters.';
     if (msg.includes('admin_password_already_set')) return 'An Admin password has already been created.';
     if (msg.includes('invalid_admin_password')) return 'Incorrect Admin password.';
-    if (msg.length > 180) return 'Shared database request failed. Check cloud-config.js and the Supabase setup.';
+    try {
+      const parsed = JSON.parse(msg);
+      const detail = parsed.message || parsed.error_description || parsed.error || parsed.hint || parsed.code;
+      if (detail) return `Database: ${String(detail).slice(0, 220)}`;
+    } catch {}
+    if (msg.length > 240) return `Database request failed: ${msg.slice(0, 220)}...`;
     return msg;
   }
 
