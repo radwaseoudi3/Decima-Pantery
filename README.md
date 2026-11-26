@@ -49,3 +49,6 @@ Employees now choose delivery locations from tap-friendly cards. A final **Custo
 ## Barista mobile reliability fix
 
 The current build keeps the Barista session across mobile reloads, refreshes shared orders when the phone returns to the foreground/online, improves touch targets, and prevents hosted local-only orders from being falsely reported as sent. See `BARISTA-MOBILE-FIX.md`.
+
+## Monthly consumption archive
+This build adds Admin-only reporting batches. Run `MONTHLY-ARCHIVE-RESET-PATCH.sql` once in Supabase. The Dashboard then shows current-batch ingredient consumption, an **Archive & start new batch** control, and a **Monthly archive** tab. Closing a batch preserves orders and inventory snapshots, resets reporting consumption to zero, and carries the real remaining stock into the new batch.

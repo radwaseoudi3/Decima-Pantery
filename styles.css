@@ -841,3 +841,20 @@ body.is-busy button { pointer-events: none; }
   .workstation-pair .chair-visual { transform: scale(.9); transform-origin: center; }
   .workstation-pair .desk-seat-bottom .chair-visual { transform: rotate(180deg) scale(.9); }
 }
+
+/* Monthly reporting / archive */
+.period-control .panel-head { align-items: flex-start; gap: 18px; }
+.archive-list { display: grid; gap: 12px; }
+.archive-period { border: 1px solid var(--line, #e8dfd9); border-radius: 16px; background: #fff; overflow: hidden; }
+.archive-period > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; }
+.archive-period > summary::-webkit-details-marker { display: none; }
+.archive-period > summary span:first-child { display: grid; gap: 4px; }
+.archive-period > summary small { color: var(--muted, #766d68); font-weight: 600; }
+.archive-period[open] > summary { border-bottom: 1px solid var(--line, #e8dfd9); background: #faf7f5; }
+.archive-period-body { padding: 16px 18px 18px; display: grid; gap: 12px; }
+.archive-period-body h3 { margin: 4px 0 0; font-size: 15px; }
+@media (max-width: 720px) {
+  .period-control .panel-head { display: grid; }
+  .period-control .panel-head .btn { width: 100%; }
+  .archive-period > summary { align-items: flex-start; }
+}

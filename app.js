@@ -203,6 +203,22 @@
   let cloudBusy = false;
   let pollTimer = null;
   let catalogTimer = null;
+  let reporting = { featureAvailable: false, activePeriod: null, archives: [], currentUsage: [] };
+
+  function usageForMaterial(materialId) {
+    return reporting.currentUsage.filter(u => u.materialId === materialId).reduce((sum, u) => sum + Number(u.amount || 0), 0);
+  }
+
+  function formatDateTime(value) {
+    if (!value) return '—';
+    try { return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); } catch { return String(value); }
+  }
+
+  function nextMonthLabel() {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1, 1);
+    return d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  }
 
   function saveCache({ broadcast = true } = {}) {
     data.updatedAt = nowIso();
@@ -376,21 +392,44 @@
     document.getElementById('app').innerHTML = `<div class="app-shell">${topbar('staff')}<main class="page">
       <section class="staff-hero"><div><span class="eyebrow light">ADMIN ACCESS</span><h1>Pantry dashboard</h1><p>Manage shared orders, bilingual drinks, recipes, ingredients, inventory and delivery locations.</p></div><div class="staff-actions"><button class="btn ghost" data-go="barista">Barista view</button><button class="btn ghost" data-go="order">Employee order view</button><button class="btn ghost" data-action="admin-lock">Lock Admin</button></div></section>
       <div class="stats-grid"><div class="card stat"><span>NEW ORDERS</span><strong>${newCount}</strong></div><div class="card stat"><span>PREPARING</span><strong>${preparing}</strong></div><div class="card stat"><span>COMPLETED</span><strong>${completed}</strong></div><div class="card stat"><span>LOW STOCK</span><strong>${low}</strong></div></div>
-      <div class="tabs"><button class="tab ${adminTab === 'dashboard' ? 'active' : ''}" data-tab="dashboard">Dashboard</button><button class="tab ${adminTab === 'orders' ? 'active' : ''}" data-tab="orders">Orders</button><button class="tab ${adminTab === 'drinks' ? 'active' : ''}" data-tab="drinks">Drinks & recipes</button><button class="tab ${adminTab === 'inventory' ? 'active' : ''}" data-tab="inventory">Ingredients & inventory</button><button class="tab ${adminTab === 'locations' ? 'active' : ''}" data-tab="locations">Locations</button><button class="tab ${adminTab === 'cloud' ? 'active' : ''}" data-tab="cloud">Shared database</button></div>
+      <div class="tabs"><button class="tab ${adminTab === 'dashboard' ? 'active' : ''}" data-tab="dashboard">Dashboard</button><button class="tab ${adminTab === 'orders' ? 'active' : ''}" data-tab="orders">Orders</button><button class="tab ${adminTab === 'archive' ? 'active' : ''}" data-tab="archive">Monthly archive</button><button class="tab ${adminTab === 'drinks' ? 'active' : ''}" data-tab="drinks">Drinks & recipes</button><button class="tab ${adminTab === 'inventory' ? 'active' : ''}" data-tab="inventory">Ingredients & inventory</button><button class="tab ${adminTab === 'locations' ? 'active' : ''}" data-tab="locations">Locations</button><button class="tab ${adminTab === 'cloud' ? 'active' : ''}" data-tab="cloud">Shared database</button></div>
       <div id="adminPanel">${renderAdminPanel()}</div>
     </main>${bottomNav('staff')}</div>`;
   }
 
   function renderAdminPanel() {
-    if (adminTab === 'orders') return `<section class="card panel"><div class="panel-head"><div><h2>All orders</h2><p>Admin can manage the same queue as the Barista.</p></div></div>${renderOrderColumns(false)}</section>`;
+    if (adminTab === 'orders') return `<section class="card panel"><div class="panel-head"><div><h2>Current-period orders</h2><p>Only the active reporting batch is shown here. Closed batches stay in Monthly archive.</p></div></div>${renderOrderColumns(false)}</section>`;
+    if (adminTab === 'archive') return renderArchivePanel();
     if (adminTab === 'drinks') return renderDrinksPanel();
     if (adminTab === 'inventory') return renderInventoryPanel();
     if (adminTab === 'locations') return renderLocationsPanel();
     if (adminTab === 'cloud') return renderCloudPanel();
     const low = data.materials.filter(m => m.active && Number(m.currentQuantity) <= Number(m.minimumQuantity));
-    return `<div style="display:grid;gap:14px"><section class="card panel"><div class="panel-head"><div><h2>Current queue</h2><p>Quick view of pending pantry work.</p></div><button class="btn soft small" data-tab="orders">Open full queue</button></div>${renderOrderColumns(false)}</section>
+    const consumed = data.materials.map(m => ({ ...m, used: usageForMaterial(m.id) })).filter(m => m.used > 0).sort((a,b) => b.used - a.used);
+    const period = reporting.activePeriod;
+    const openOrders = data.orders.filter(o => o.status !== 'Completed').length;
+    const reportingCard = reporting.featureAvailable && period
+      ? `<section class="card panel period-control"><div class="panel-head"><div><span class="eyebrow">ACTIVE REPORTING BATCH</span><h2>${esc(period.label)}</h2><p>Started ${esc(formatDateTime(period.startedAt))}. Consumption counters belong only to this batch.</p></div><button class="btn danger" data-action="archive-period" ${openOrders ? 'disabled' : ''}>Archive & start new batch</button></div>${openOrders ? `<div class="notice warn"><strong>Finish ${openOrders} open order${openOrders === 1 ? '' : 's'} first.</strong> New/Preparing orders must be completed before this batch can be archived.</div>` : '<div class="notice info"><strong>Month-end reset:</strong> old orders and consumption are archived, counters restart at zero, and real remaining stock carries forward.</div>'}</section>`
+      : `<section class="notice warn"><strong>Monthly reporting is not installed yet.</strong><br>Run MONTHLY-ARCHIVE-RESET-PATCH.sql in Supabase once, then refresh this dashboard.</section>`;
+    const consumptionTable = consumed.length ? `<div class="table-wrap"><table><thead><tr><th>Ingredient</th><th>Consumed this batch</th><th>Remaining stock</th></tr></thead><tbody>${consumed.map(m => `<tr><td><strong>${esc(m.nameEn)}</strong></td><td><strong>${fmt(m.used)} ${unitShort(m.baseUnit)}</strong></td><td>${fmt(m.currentQuantity)} ${unitShort(m.baseUnit)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No ingredient consumption recorded in this batch yet.</div>';
+    return `<div style="display:grid;gap:14px">${reportingCard}<section class="card panel"><div class="panel-head"><div><h2>Current queue</h2><p>Quick view of pending pantry work.</p></div><button class="btn soft small" data-tab="orders">Open full queue</button></div>${renderOrderColumns(false)}</section>
+      <section class="card panel"><div class="panel-head"><div><h2>Consumption this batch</h2><p>Recipe ingredients deducted by orders in ${esc(period?.label || 'the active period')}.</p></div><button class="btn soft small" data-tab="inventory">Open inventory</button></div>${consumptionTable}</section>
       <section class="card panel"><div class="panel-head"><div><h2>Stock alerts</h2><p>Ingredients at or below their minimum quantity.</p></div><button class="btn soft small" data-tab="inventory">Manage inventory</button></div>${low.length ? `<div class="table-wrap"><table><thead><tr><th>Ingredient</th><th>Current</th><th>Minimum</th><th>Status</th></tr></thead><tbody>${low.map(m => `<tr><td><strong>${esc(m.nameEn)}</strong></td><td>${fmt(m.currentQuantity)} ${unitShort(m.baseUnit)}</td><td>${fmt(m.minimumQuantity)} ${unitShort(m.baseUnit)}</td><td><span class="status low">Low stock</span></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">No low-stock ingredients right now.</div>'}</section>
       <section class="notice ${cloudEnabled() ? 'success-note' : 'warn'}"><strong>${cloudEnabled() ? 'Shared database mode is enabled.' : 'Shared database is not connected yet.'}</strong><br>${cloudEnabled() ? 'Orders can sync between employee phones and the Barista device.' : 'The app still works locally, but cross-device orders require the one-time Supabase setup included in this folder.'}</section></div>`;
+  }
+
+  function renderArchivePanel() {
+    if (!reporting.featureAvailable) return `<section class="notice warn"><strong>Monthly archive is not installed yet.</strong><br>Run MONTHLY-ARCHIVE-RESET-PATCH.sql in Supabase, then refresh.</section>`;
+    if (!reporting.archives.length) return `<section class="card panel"><div class="panel-head"><div><h2>Monthly archive</h2><p>Closed batches will appear here after you use “Archive & start new batch”.</p></div></div><div class="empty">No archived batches yet.</div></section>`;
+    return `<section class="card panel"><div class="panel-head"><div><h2>Monthly archive</h2><p>Every closed batch keeps its orders and ingredient-consumption totals.</p></div></div><div class="archive-list">${reporting.archives.map(renderArchivedPeriod).join('')}</div></section>`;
+  }
+
+  function renderArchivedPeriod(period) {
+    const usage = Array.isArray(period.consumptionSnapshot) ? period.consumptionSnapshot : [];
+    const orders = Array.isArray(period.ordersSnapshot) ? period.ordersSnapshot : [];
+    const usageRows = usage.length ? usage.map(u => `<tr><td><strong>${esc(u.name_en || u.material_name_en || u.material_id)}</strong></td><td>${fmt(u.amount)} ${unitShort(u.base_unit || '')}</td></tr>`).join('') : '<tr><td colspan="2">No ingredient consumption recorded.</td></tr>';
+    const orderRows = orders.length ? orders.map(o => `<tr><td>#${esc(o.number)}</td><td>${esc(o.drink_name_en || 'Order')}</td><td>${esc(o.location_name_en || '')}${o.desk_id ? ` · ${esc(o.desk_id)}` : ''}</td><td>${esc(formatDateTime(o.created_at))}</td></tr>`).join('') : '<tr><td colspan="4">No orders in this batch.</td></tr>';
+    return `<details class="archive-period"><summary><span><strong>${esc(period.label)}</strong><small>${period.orderCount} orders · archived ${esc(formatDateTime(period.archivedAt))}</small></span><span class="count-badge">${period.orderCount}</span></summary><div class="archive-period-body"><h3>Ingredient consumption</h3><div class="table-wrap"><table><thead><tr><th>Ingredient</th><th>Consumed</th></tr></thead><tbody>${usageRows}</tbody></table></div><h3>Archived orders</h3><div class="table-wrap"><table><thead><tr><th>Order</th><th>Drink</th><th>Location</th><th>Placed</th></tr></thead><tbody>${orderRows}</tbody></table></div></div></details>`;
   }
 
   function renderOrderColumns(arabic = false) {
@@ -443,9 +482,10 @@
       </form>
     </section>
     <section class="card panel"><div class="panel-head"><div><h2>Ingredients & inventory</h2><p>${data.materials.length} ingredients logged.</p></div>${cloudEnabled() ? '' : '<button class="btn ghost small" data-action="reset-demo">Reset demo data</button>'}</div>
-      <div class="table-wrap"><table><thead><tr><th>Ingredient</th><th>Arabic</th><th>Package</th><th>Current</th><th>Minimum</th><th>Status</th><th>Actions</th></tr></thead><tbody>${data.materials.map(m => {
+      <div class="table-wrap"><table><thead><tr><th>Ingredient</th><th>Arabic</th><th>Package</th><th>Current</th><th>Consumed this batch</th><th>Minimum</th><th>Status</th><th>Actions</th></tr></thead><tbody>${data.materials.map(m => {
         const low = m.active && Number(m.currentQuantity) <= Number(m.minimumQuantity);
-        return `<tr><td><strong>${esc(m.nameEn)}</strong><div class="helper">${esc(m.baseUnit)}</div></td><td dir="rtl">${esc(m.nameAr)}</td><td>${esc(m.packageName)} · ${fmt(m.unitsPerPackage)} ${unitShort(m.baseUnit)}</td><td>${fmt(m.currentQuantity)} ${unitShort(m.baseUnit)}</td><td>${fmt(m.minimumQuantity)} ${unitShort(m.baseUnit)}</td><td><span class="status ${!m.active ? 'off' : low ? 'low' : 'ok'}">${!m.active ? 'Inactive' : low ? 'Low stock' : 'Available'}</span></td><td><div class="row-actions"><button class="btn soft small" data-material-edit="${esc(m.id)}">Edit</button><button class="btn danger small" data-material-delete="${esc(m.id)}">Delete</button></div></td></tr>`;
+        const used = usageForMaterial(m.id);
+        return `<tr><td><strong>${esc(m.nameEn)}</strong><div class="helper">${esc(m.baseUnit)}</div></td><td dir="rtl">${esc(m.nameAr)}</td><td>${esc(m.packageName)} · ${fmt(m.unitsPerPackage)} ${unitShort(m.baseUnit)}</td><td>${fmt(m.currentQuantity)} ${unitShort(m.baseUnit)}</td><td><strong>${fmt(used)} ${unitShort(m.baseUnit)}</strong></td><td>${fmt(m.minimumQuantity)} ${unitShort(m.baseUnit)}</td><td><span class="status ${!m.active ? 'off' : low ? 'low' : 'ok'}">${!m.active ? 'Inactive' : low ? 'Low stock' : 'Available'}</span></td><td><div class="row-actions"><button class="btn soft small" data-material-edit="${esc(m.id)}">Edit</button><button class="btn danger small" data-material-delete="${esc(m.id)}">Delete</button></div></td></tr>`;
       }).join('')}</tbody></table></div>
     </section></div>`;
   }
@@ -642,8 +682,9 @@
   }
 
   async function submitLogin(form) {
-    // Prime browser audio during the login gesture so future incoming orders may ring automatically.
-    enableBell(false);
+    // Start real audible playback during this trusted login gesture so the browser
+    // grants future alarm playback. The pulse is stopped shortly after if no order is waiting.
+    unlockBellFromGesture(false);
     const fd = new FormData(form);
     const password = String(fd.get('password') || '');
     if (!cloudEnabled()) return toast('Shared database is not configured.', 'error');
@@ -769,130 +810,122 @@
   }
 
   // ---------------------- Persistent Barista order alarm ----------------------
-  // Use Web Audio as the primary alarm so mobile/desktop browsers do not depend on
-  // an external audio file repeatedly restarting. Browser autoplay rules still
-  // require one user gesture; the Staff login primes the audio context.
-  const bellAudio = new Audio('assets/coffee-shop-bell.wav'); // fallback only
+  // Use the real bell WAV as the primary alarm. Browsers require an audible
+  // playback to begin from a user gesture before later playback is allowed.
+  // The Staff login and the "Enable / Test Bell" button both perform that
+  // audible unlock. Once unlocked, the same WAV loops until every New order
+  // has been acknowledged by the Barista.
+  const bellAudio = new Audio('assets/coffee-shop-bell.wav?v=5');
   bellAudio.preload = 'auto';
   bellAudio.volume = 1.0;
+  bellAudio.loop = false;
+  bellAudio.setAttribute('playsinline', '');
   let bellEnabled = false;
-  let bellTimer = null;
-  let bellCtx = null;
-  let bellMaster = null;
-  const bellNodes = new Set();
+  let bellUnlockInFlight = false;
+  let wakeLock = null;
 
-  function initBellContext() {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return false;
-    if (!bellCtx) {
-      bellCtx = new AudioCtx();
-      bellMaster = bellCtx.createGain();
-      bellMaster.gain.value = 0.82;
-      bellMaster.connect(bellCtx.destination);
-    }
-    return true;
+  function shouldBellRing() {
+    return route() === 'barista' && canAccess('barista') && data.orders.some(o => o.status === 'New');
   }
 
-  function enableBell(playNow = false) {
-    if (initBellContext()) {
-      const resumed = bellCtx.resume();
-      Promise.resolve(resumed).then(() => {
-        bellEnabled = bellCtx.state === 'running';
-        if (bellEnabled && playNow) playCafeBell();
+  async function requestAlarmWakeLock() {
+    if (!('wakeLock' in navigator) || wakeLock) return;
+    try { wakeLock = await navigator.wakeLock.request('screen'); }
+    catch { wakeLock = null; }
+  }
+
+  async function releaseAlarmWakeLock() {
+    if (!wakeLock) return;
+    try { await wakeLock.release(); } catch {}
+    wakeLock = null;
+  }
+
+  function unlockBellFromGesture(playTest = true) {
+    if (bellUnlockInFlight) return;
+    bellUnlockInFlight = true;
+    try {
+      bellAudio.pause();
+      bellAudio.currentTime = 0;
+      bellAudio.loop = false;
+      bellAudio.muted = false;
+      bellAudio.volume = 1.0;
+      const playPromise = bellAudio.play();
+      Promise.resolve(playPromise).then(() => {
+        bellEnabled = true;
+        bellUnlockInFlight = false;
+
+        // If a New order already exists, convert the test playback directly
+        // into the persistent alarm. Otherwise allow one full audible test ring.
+        if (shouldBellRing()) {
+          bellAudio.loop = true;
+          requestAlarmWakeLock();
+          if (navigator.vibrate) navigator.vibrate([250, 100, 250, 100, 400]);
+        } else if (!playTest) {
+          // The login still needs a real audible playback to satisfy browser
+          // policy, so keep a short but clearly audible unlock pulse.
+          setTimeout(() => {
+            if (!shouldBellRing()) {
+              try { bellAudio.pause(); bellAudio.currentTime = 0; } catch {}
+            } else updateBellLoop();
+          }, 650);
+        }
+
         if (route() === 'barista') renderBarista();
       }).catch(() => {
+        bellUnlockInFlight = false;
         bellEnabled = false;
-        if (route() === 'barista') renderBarista();
+        if (route() === 'barista') {
+          toast('المتصفح منع الصوت. اضغط زر “تفعيل / تجربة الجرس” مرة واحدة ثم ارفع مستوى صوت الجهاز.', 'error');
+          renderBarista();
+        }
       });
-      return;
+    } catch {
+      bellUnlockInFlight = false;
+      bellEnabled = false;
     }
-
-    // Very old browser fallback. A user gesture is still required.
-    try {
-      bellAudio.muted = true;
-      const p = bellAudio.play();
-      if (p?.then) p.then(() => {
-        bellAudio.pause(); bellAudio.currentTime = 0; bellAudio.muted = false; bellEnabled = true;
-        if (playNow) playCafeBell();
-        if (route() === 'barista') renderBarista();
-      }).catch(() => { bellAudio.muted = false; bellEnabled = false; });
-      else { bellAudio.pause(); bellAudio.currentTime = 0; bellAudio.muted = false; bellEnabled = true; }
-    } catch { bellEnabled = false; }
-  }
-
-  function scheduleBellTone(offset, frequency, duration = 0.18) {
-    if (!bellCtx || bellCtx.state !== 'running' || !bellMaster) return;
-    const now = bellCtx.currentTime + offset;
-    const osc = bellCtx.createOscillator();
-    const gain = bellCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(frequency, now);
-    gain.gain.setValueAtTime(0.0001, now);
-    gain.gain.exponentialRampToValueAtTime(0.9, now + 0.018);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-    osc.connect(gain);
-    gain.connect(bellMaster);
-    bellNodes.add(osc);
-    osc.onended = () => bellNodes.delete(osc);
-    osc.start(now);
-    osc.stop(now + duration + 0.03);
   }
 
   function playCafeBell() {
     if (!bellEnabled) return;
-    if (bellCtx && bellCtx.state === 'running') {
-      try {
-        bellMaster.gain.cancelScheduledValues(bellCtx.currentTime);
-        bellMaster.gain.setValueAtTime(0.82, bellCtx.currentTime);
-        // A clear three-note counter-bell pattern, repeated by updateBellLoop.
-        scheduleBellTone(0.00, 880, 0.16);
-        scheduleBellTone(0.24, 1100, 0.16);
-        scheduleBellTone(0.48, 880, 0.20);
-        if (navigator.vibrate) navigator.vibrate([180, 80, 180]);
-      } catch { /* keep the dashboard usable even if audio is unavailable */ }
-      return;
-    }
-
-    // File fallback for browsers without Web Audio.
     try {
-      bellAudio.pause(); bellAudio.currentTime = 0; bellAudio.volume = 1.0;
-      bellAudio.play().catch(() => { bellEnabled = false; clearBellLoop(); if (route() === 'barista') renderBarista(); });
-    } catch { /* audio optional */ }
+      bellAudio.muted = false;
+      bellAudio.volume = 1.0;
+      bellAudio.loop = true;
+      if (bellAudio.paused) {
+        bellAudio.currentTime = 0;
+        bellAudio.play().catch(() => {
+          bellEnabled = false;
+          clearBellLoop();
+          if (route() === 'barista') {
+            toast('الصوت محظور في هذا المتصفح. اضغط “تفعيل / تجربة الجرس”.', 'error');
+            renderBarista();
+          }
+        });
+      }
+      requestAlarmWakeLock();
+      if (navigator.vibrate) navigator.vibrate([250, 100, 250, 100, 400]);
+    } catch {}
   }
 
   function updateBellLoop() {
-    const shouldRing = route() === 'barista' && canAccess('barista') && data.orders.some(o => o.status === 'New');
-    if (!shouldRing) return clearBellLoop();
-    if (!bellEnabled) return clearBellLoop();
-    if (!bellTimer) {
-      playCafeBell();
-      bellTimer = setInterval(() => {
-        const stillHasNew = route() === 'barista' && canAccess('barista') && data.orders.some(o => o.status === 'New');
-        if (!stillHasNew) return clearBellLoop();
-        playCafeBell();
-      }, 1450);
-    }
+    if (!shouldBellRing()) return clearBellLoop();
+    if (!bellEnabled) return;
+    playCafeBell();
   }
 
   function clearBellLoop() {
-    if (bellTimer) clearInterval(bellTimer);
-    bellTimer = null;
+    try {
+      bellAudio.loop = false;
+      bellAudio.pause();
+      bellAudio.currentTime = 0;
+    } catch {}
     if (navigator.vibrate) navigator.vibrate(0);
-    if (bellMaster && bellCtx) {
-      try {
-        bellMaster.gain.cancelScheduledValues(bellCtx.currentTime);
-        bellMaster.gain.setValueAtTime(0.0001, bellCtx.currentTime);
-      } catch {}
-    }
-    for (const node of bellNodes) { try { node.stop(); } catch {} }
-    bellNodes.clear();
-    try { bellAudio.pause(); bellAudio.currentTime = 0; } catch {}
+    releaseAlarmWakeLock();
   }
 
   function resumeBellAfterForeground() {
-    if (bellCtx && bellEnabled && bellCtx.state === 'suspended') {
-      bellCtx.resume().then(updateBellLoop).catch(() => {});
-    } else updateBellLoop();
+    if (shouldBellRing() && bellEnabled) playCafeBell();
+    else if (!shouldBellRing()) clearBellLoop();
   }
 
   function timeAgo(iso) {
@@ -958,6 +991,30 @@
   const toCloudLocation = l => ({ id: l.id, name_en: l.nameEn, name_ar: l.nameAr, has_desk_map: l.hasDeskMap, active: l.active, sort_order: l.sortOrder, created_at: l.createdAt });
   const fromCloudOrder = r => ({ id: r.id, number: r.number, drinkId: r.drink_id, drinkNameEn: r.drink_name_en, drinkNameAr: r.drink_name_ar, drinkIcon: r.drink_icon || '☕', locationId: r.location_id, locationNameEn: r.location_name_en, locationNameAr: r.location_name_ar, deskId: r.desk_id || '', quantity: Number(r.quantity || 1), sugarSpoons: Number(r.sugar_spoons || 0), customRequest: r.custom_request || '', status: r.status, createdAt: r.created_at, acceptedAt: r.accepted_at, completedAt: r.completed_at });
   const toCloudOrderPatch = p => ({ ...(p.status ? { status: p.status } : {}), ...(p.acceptedAt ? { accepted_at: p.acceptedAt } : {}), ...(p.completedAt ? { completed_at: p.completedAt } : {}) });
+  const fromCloudPeriod = r => ({ id: r.id, label: r.label, startedAt: r.started_at, archivedAt: r.archived_at, active: Boolean(r.active), openingInventory: r.opening_inventory || [], closingInventory: r.closing_inventory || [], consumptionSnapshot: r.consumption_snapshot || [], ordersSnapshot: r.orders_snapshot || [], orderCount: Number(r.order_count || 0) });
+  const fromCloudUsage = r => ({ orderId: r.order_id, periodId: r.period_id, materialId: r.material_id, materialNameEn: r.material_name_en, materialNameAr: r.material_name_ar, baseUnit: r.base_unit, amount: Number(r.amount || 0), createdAt: r.created_at });
+
+  async function syncReportingFromCloud() {
+    if (!cloudEnabled() || !session()?.accessToken) return;
+    try {
+      const periods = await cloudRequest('/rest/v1/pantry_reporting_periods?select=*&order=started_at.desc', { auth: true });
+      const mapped = Array.isArray(periods) ? periods.map(fromCloudPeriod) : [];
+      reporting.featureAvailable = true;
+      reporting.activePeriod = mapped.find(p => p.active) || null;
+      reporting.archives = mapped.filter(p => !p.active);
+      if (reporting.activePeriod) {
+        const usage = await cloudRequest(`/rest/v1/pantry_inventory_usage?select=*&period_id=eq.${encodeURIComponent(reporting.activePeriod.id)}&order=created_at.asc`, { auth: true });
+        reporting.currentUsage = Array.isArray(usage) ? usage.map(fromCloudUsage) : [];
+      } else reporting.currentUsage = [];
+    } catch (err) {
+      const msg = String(err?.message || err);
+      if (msg.includes('pantry_reporting_periods') || msg.includes('pantry_inventory_usage') || msg.includes('PGRST')) {
+        reporting = { featureAvailable: false, activePeriod: null, archives: [], currentUsage: [] };
+        return;
+      }
+      throw err;
+    }
+  }
 
   async function syncCatalogFromCloud() {
     if (!cloudEnabled()) return;
@@ -974,14 +1031,35 @@
 
   async function syncOrdersFromCloud() {
     if (!cloudEnabled() || !session()?.accessToken) return;
-    const rows = await cloudRequest('/rest/v1/pantry_orders?select=*&order=created_at.desc&limit=250', { auth: true });
+    const periodFilter = reporting.featureAvailable && reporting.activePeriod ? `&reporting_period_id=eq.${encodeURIComponent(reporting.activePeriod.id)}` : '';
+    const rows = await cloudRequest(`/rest/v1/pantry_orders?select=*&order=created_at.desc&limit=250${periodFilter}`, { auth: true });
     if (Array.isArray(rows)) data.orders = rows.map(fromCloudOrder);
     saveCache({ broadcast: false });
   }
 
   async function syncAllFromCloud(includeOrders = false) {
     await syncCatalogFromCloud();
+    if (session()?.accessToken) await syncReportingFromCloud();
     if (includeOrders && session()?.accessToken) await syncOrdersFromCloud();
+  }
+
+  async function archiveCurrentPeriod() {
+    if (!cloudEnabled() || !adminToken()) return toast('Admin password is required.', 'error');
+    if (!reporting.featureAvailable || !reporting.activePeriod) return toast('Run the monthly reporting SQL patch first.', 'error');
+    const openOrders = data.orders.filter(o => o.status !== 'Completed');
+    if (openOrders.length) return toast(`Complete ${openOrders.length} open order${openOrders.length === 1 ? '' : 's'} before archiving this batch.`, 'error');
+    const nextLabel = prompt('Name the new reporting batch:', nextMonthLabel());
+    if (nextLabel === null || !String(nextLabel).trim()) return;
+    if (!confirm(`Archive ${reporting.activePeriod.label} and start “${String(nextLabel).trim()}”?\n\nOrder records and consumption totals will be preserved. Real remaining stock will carry forward; only the monthly consumption counters reset to zero.`)) return;
+    try {
+      setCloudBusy(true);
+      const result = await cloudRequest('/rest/v1/rpc/pantry_close_reporting_period', { method: 'POST', body: { p_next_label: String(nextLabel).trim() }, auth: true, admin: true });
+      await syncAllFromCloud(true);
+      adminTab = 'dashboard';
+      toast(`${result?.archived_label || 'Batch'} archived. ${result?.new_period_label || String(nextLabel).trim()} is now active.`, 'success');
+      renderAdmin();
+    } catch (err) { toast(humanCloudError(err), 'error'); }
+    finally { setCloudBusy(false); }
   }
 
   async function cloudSaveMaterial(obj, editing) {
@@ -1020,6 +1098,8 @@
     if (msg.includes('admin_password_too_short')) return 'Admin password must be at least 6 characters.';
     if (msg.includes('admin_password_already_set')) return 'An Admin password has already been created.';
     if (msg.includes('invalid_admin_password')) return 'Incorrect Admin password.';
+    if (msg.includes('finish_open_orders_first')) return 'Complete all New and Preparing orders before starting a new reporting batch.';
+    if (msg.includes('admin_required')) return 'Unlock Admin mode again before resetting the reporting batch.';
     try {
       const parsed = JSON.parse(msg);
       const detail = parsed.message || parsed.error_description || parsed.error || parsed.hint || parsed.code;
@@ -1072,11 +1152,12 @@
       const action = actionEl.dataset.action;
       if (action === 'place-order') return placeOrder();
       if (action === 'logout') { clearBellLoop(); setSession(null); toast('Signed out.'); return go('order'); }
-      if (action === 'enable-bell') { enableBell(true); updateBellLoop(); return; }
+      if (action === 'enable-bell') { unlockBellFromGesture(true); setTimeout(updateBellLoop, 80); return; }
       if (action === 'admin-access') return unlockAdminMode();
       if (action === 'admin-lock') return lockAdminMode();
       if (action === 'refresh') { if (cloudEnabled()) { try { await syncAllFromCloud(true); } catch {} } return render(); }
       if (action === 'reset-demo') return resetDemo();
+      if (action === 'archive-period') return archiveCurrentPeriod();
       if (action === 'add-ingredient') { ingredientDraft.push({ materialId: data.materials.find(m => m.active)?.id || '', amount: 1 }); return renderAdmin(); }
       if (action === 'cancel-material-edit') { editingMaterialId = null; return renderAdmin(); }
       if (action === 'cancel-drink-edit') { editingDrinkId = null; ingredientDraft = [{ materialId: data.materials.find(m => m.active)?.id || '', amount: 1 }]; return renderAdmin(); }
@@ -1130,7 +1211,7 @@
     if (cloudEnabled()) {
       try {
         await syncCatalogFromCloud();
-        if (session()?.accessToken) await syncOrdersFromCloud();
+        if (session()?.accessToken) { await syncReportingFromCloud(); await syncOrdersFromCloud(); }
         render();
       } catch (err) { console.warn('Shared database sync failed:', err); }
       startCloudPolling();
