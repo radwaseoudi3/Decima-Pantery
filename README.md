@@ -1,46 +1,51 @@
-# Decima Pantry - Live Server Version
+# Decima Pantry
 
-This version was rewritten as a **static HTML/CSS/JavaScript app** so it can run directly with the **Live Server** extension in Visual Studio Code.
+Mobile-first office pantry ordering app. Runs directly from `index.html` with VS Code Live Server and can be hosted on GitHub Pages.
 
-## Open it
+## Employee flow
 
-1. Extract the ZIP.
-2. Open the `DecimaPantry_LiveServer` folder in **Visual Studio Code**.
-3. Install the **Live Server** extension if you do not already have it.
-4. Right-click `index.html`.
-5. Choose **Open with Live Server**.
+1. Choose a drink.
+2. Choose the delivery location.
+3. If **Main Hall** is selected, choose the exact desk from the visual workstation map.
+4. Choose quantity and sugar (1 spoon = **5 g**) or use **Custom Request**.
+5. Submit.
 
-There is no `.NET`, SQL Server, migration, build, or `dotnet run` step in this version.
+The default landing page is always the employee ordering page for a new unsigned-in tab.
 
-## Demo staff accounts
+## Barista
 
-### Barista
-- Username: `barista`
-- Password: `Coffee123!`
-- Access: incoming orders only; can accept orders and mark them complete.
+The Barista interface is in Arabic. Drink names and delivery locations are shown in Arabic. A coffee-shop counter bell repeats while any order is still **New** and stops for an order when the Barista clicks **تم استلام الطلب**.
 
-### Admin
-- Username: `admin`
-- Password: `Decima123!`
-- Access: dashboard, orders, drinks/recipes, and inventory.
+## Admin
 
-## Sugar rule
+Admin can add/edit/delete:
 
-One sugar spoon is **5 grams**. Sugar inventory is reduced by:
+- ingredients and inventory
+- bilingual drinks (English employee name + Arabic Barista name)
+- recipes
+- bilingual locations (English employee name + Arabic Barista name)
 
-`number of cups × sugar spoons per cup × 5 g`
+Admin can also enable the workstation desk map on a location.
 
-## Coffee-shop bell
+## Important: multiple phones/computers
 
-The Barista/Admin order queue uses a soft multi-tone bell made with the browser Web Audio API. Use **Test bell** after login if the browser has not yet enabled audio.
+Browser `localStorage` cannot share data between an employee phone and a separate Barista computer. This version includes a shared Supabase data layer specifically to solve that.
 
-## Storage / important limitation
+Follow `SHARED-DATABASE-SETUP.md` before office-wide GitHub Pages use.
 
-This Live Server build stores data in the browser using `localStorage`.
+## Local demo login (when cloud-config.js has enabled:false)
 
-- It persists when you refresh the page.
-- Separate tabs on the same browser/origin can see the same data and update one another.
-- It is suitable for design review and local demonstration.
-- **It does not provide a shared database between different phones/computers.** A real office deployment where employees order from their phones and a barista sees those orders on a separate device needs a shared backend/database or cloud service.
+- Barista: `barista` / `Coffee123!`
+- Admin: `admin` / `Decima123!`
 
-Because this is a static Live Server app, the demo usernames/passwords are visible in the JavaScript source and are **not production security**.
+When shared database mode is enabled, the passwords come from the two Supabase Auth users instead of being stored in the website code.
+
+## Main Hall visual delivery map
+For orders delivered to the Main Hall, the Barista/Admin order card now shows a compact visual copy of the desk layout. The employee's selected desk is highlighted in Decima burgundy, so the Barista can locate the delivery point visually instead of relying on the desk code alone.
+
+## Custom delivery location
+Employees now choose delivery locations from tap-friendly cards. A final **Custom Location** card opens a text field for any unlisted location. Custom locations are displayed to the Barista as `موقع مخصص: <entered location>`.
+
+## Barista mobile reliability fix
+
+The current build keeps the Barista session across mobile reloads, refreshes shared orders when the phone returns to the foreground/online, improves touch targets, and prevents hosted local-only orders from being falsely reported as sent. See `BARISTA-MOBILE-FIX.md`.
