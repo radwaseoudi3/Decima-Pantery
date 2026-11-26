@@ -1,0 +1,20 @@
+DECIMA PANTRY - FINAL SUPABASE CONNECTION
+
+The website is already configured with the Decima Pantry Supabase project URL and browser-safe publishable key.
+
+Before uploading this website to GitHub Pages, run FINAL-SUPABASE-STAFF-ADMIN-PATCH.sql once in Supabase > SQL Editor.
+
+What that patch does:
+- Registers the one real Pantry staff account for order access.
+- Keeps employee ordering public (no employee login required).
+- Lets the staff account receive, accept and complete orders.
+- Adds a separate internal Admin password for editing ingredients, recipes, inventory and locations.
+- Stores only a bcrypt hash of the Admin password in Supabase.
+- Creates 60-minute Admin unlock sessions.
+
+After the patch is run:
+1. Upload the contents of this folder to the existing GitHub Pages repository.
+2. Staff opens Staff access and enters the Supabase staff-account password.
+3. Staff can receive orders immediately.
+4. To edit Pantry data, click Admin settings.
+5. On first use, the app asks you to create the internal Admin password. It is separate from the staff login password.

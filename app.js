@@ -3,6 +3,7 @@
 
   const APP_KEY = 'decimaPantryLiveServerV1'; // keep the existing key so browser-added pantry data is preserved
   const SESSION_KEY = 'decimaPantryStaffSession';
+  const ADMIN_TOKEN_KEY = 'decimaPantryAdminToken';
   const MY_ORDER_IDS_KEY = 'decimaPantryMyOrderIds';
   const START_KEY = 'decimaPantryStartedThisTab';
   const CUSTOM_DRINK_ID = '__custom__';
@@ -10,11 +11,6 @@
   const SUGAR_GRAMS_PER_SPOON = 5;
   const CLOUD = window.DECIMA_PANTRY_CLOUD || { enabled: false };
   const channel = 'BroadcastChannel' in window ? new BroadcastChannel('decima-pantry-live') : null;
-
-  const LOCAL_STAFF = {
-    barista: { username: 'barista', password: 'Coffee123!', role: 'Barista' },
-    admin: { username: 'admin', password: 'Decima123!', role: 'Admin' }
-  };
 
   const DRINK_TRANSLATIONS = {
     'Regular Coffee': 'قهوة عادية',
@@ -200,7 +196,6 @@
   const preCloudLocalSnapshot = JSON.parse(JSON.stringify(data));
   let orderUi = { selectedDrinkId: '', locationId: '', deskId: '', customLocation: '', quantity: 1, sugarSpoons: 0, customRequest: '' };
   let adminTab = 'dashboard';
-  let loginRole = 'barista';
   let ingredientDraft = [{ materialId: data.materials.find(m => m.active)?.id || '', amount: 1 }];
   let editingMaterialId = null;
   let editingDrinkId = null;
@@ -224,14 +219,18 @@
     } catch { return null; }
   }
 
+  function adminToken() { return sessionStorage.getItem(ADMIN_TOKEN_KEY) || ''; }
+  function setAdminToken(token) {
+    if (token) sessionStorage.setItem(ADMIN_TOKEN_KEY, String(token));
+    else sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+  }
+
   function setSession(s) {
     sessionStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(SESSION_KEY);
-    if (!s) return;
-    // Keep the dedicated Barista phone signed in across mobile reloads/restarts.
-    // Admin sessions remain tab-scoped.
-    const store = s.role === 'Barista' ? localStorage : sessionStorage;
-    store.setItem(SESSION_KEY, JSON.stringify(s));
+    if (!s) { setAdminToken(''); return; }
+    // Keep the shared staff device signed in across mobile reloads/restarts.
+    localStorage.setItem(SESSION_KEY, JSON.stringify(s));
   }
 
   function route() {
@@ -243,26 +242,27 @@
 
   function canAccess(target) {
     const s = session();
-    if (target === 'barista') return s && (s.role === 'Barista' || s.role === 'Admin');
-    if (target === 'admin') return s && s.role === 'Admin';
+    if (target === 'barista') return Boolean(s);
+    if (target === 'admin') return Boolean(s && adminToken());
     return true;
   }
 
   function topbar(active = 'order', arabic = false) {
     const s = session();
     const staffLabel = arabic ? 'دخول الموظفين' : 'Staff access';
-    const roleLabel = s?.role === 'Barista' && arabic ? 'الباريستا' : s?.role;
+    const staffTarget = adminToken() ? 'admin' : 'barista';
+    const roleLabel = adminToken() ? (arabic ? 'الإدارة' : 'Admin') : (arabic ? 'الباريستا' : 'Staff');
     return `<header class="topbar"><div class="topbar-inner">
       <button class="brand" data-go="order" aria-label="Go to ordering page"><span class="brand-mark">D</span><span class="brand-copy"><strong>DECIMA PANTRY</strong><span>Office drinks, simplified.</span></span></button>
-      <div class="top-actions">${s ? `<button class="nav-btn" data-go="${s.role === 'Admin' ? 'admin' : 'barista'}">${esc(roleLabel)}</button><button class="icon-btn" data-action="logout" title="Sign out">↪</button>` : `<button class="nav-btn ${active === 'login' ? 'primary' : ''}" data-go="login">${staffLabel}</button><button class="icon-btn" data-go="login" title="${staffLabel}">⚙</button>`}</div>
+      <div class="top-actions">${s ? `<button class="nav-btn" data-go="${staffTarget}">${esc(roleLabel)}</button><button class="icon-btn" data-action="logout" title="Sign out">↪</button>` : `<button class="nav-btn ${active === 'login' ? 'primary' : ''}" data-go="login">${staffLabel}</button><button class="icon-btn" data-go="login" title="${staffLabel}">⚙</button>`}</div>
     </div></header>`;
   }
 
   function bottomNav(active = 'order', arabic = false) {
     const s = session();
-    const staffTarget = s ? (s.role === 'Admin' ? 'admin' : 'barista') : 'login';
+    const staffTarget = s ? (adminToken() ? 'admin' : 'barista') : 'login';
     const orderLabel = arabic ? 'الطلب' : 'Order';
-    const staffLabel = arabic ? (s?.role === 'Barista' ? 'الباريستا' : 'الموظفون') : (s ? s.role : 'Staff');
+    const staffLabel = arabic ? (adminToken() ? 'الإدارة' : 'الباريستا') : (adminToken() ? 'Admin' : 'Staff');
     return `<nav class="bottom-nav"><button class="${active === 'order' ? 'active' : ''}" data-go="order">☕<br>${orderLabel}</button><button class="${active !== 'order' ? 'active' : ''}" data-go="${staffTarget}">⚙<br>${esc(staffLabel)}</button></nav>`;
   }
 
@@ -343,25 +343,24 @@
   }
 
   function renderLogin() {
-    const isBarista = loginRole === 'barista';
-    document.getElementById('app').innerHTML = `<div class="app-shell">${topbar('login')}<main class="login-wrap"><section class="card login-card ${isBarista ? 'rtl-login' : ''}" ${isBarista ? 'dir="rtl" lang="ar"' : ''}>
-      <div class="login-mark">☕</div><span class="eyebrow">${isBarista ? 'دخول الموظفين' : 'STAFF ACCESS'}</span><h1>${isBarista ? 'دخول الباريستا' : 'Pantry sign in'}</h1><p>${isBarista ? 'استلم الطلبات الجديدة وابدأ التحضير من شاشة الباريستا.' : 'Admins manage orders, drinks, recipes, ingredients, inventory and locations.'}</p>
-      <div class="role-pills"><button class="role-pill ${isBarista ? 'active' : ''}" data-role="barista">باريستا</button><button class="role-pill ${!isBarista ? 'active' : ''}" data-role="admin">Admin</button></div>
+    document.getElementById('app').innerHTML = `<div class="app-shell">${topbar('login')}<main class="login-wrap"><section class="card login-card rtl-login" dir="rtl" lang="ar">
+      <div class="login-mark">☕</div><span class="eyebrow">دخول الموظفين · STAFF ACCESS</span><h1>دخول الباريستا</h1><p>استخدم كلمة مرور حساب الموظفين المشترك لاستلام الطلبات. إعدادات الإدارة لها كلمة مرور داخلية منفصلة.</p>
       <form id="loginForm" class="login-form">
-        <div class="field"><label>${isBarista ? 'اسم المستخدم' : 'Username'}</label><input class="input" name="username" autocomplete="username" required placeholder="${isBarista ? 'barista' : 'admin'}" value="${isBarista ? 'barista' : 'admin'}"></div>
-        <div class="field"><label>${isBarista ? 'كلمة المرور' : 'Password'}</label><input class="input" name="password" type="password" autocomplete="current-password" required></div>
-        <button class="btn primary full" type="submit">${isBarista ? 'دخول الباريستا' : 'Sign in as Admin'}</button>
+        <div class="field"><label>حساب الموظفين</label><input class="input" value="${esc(CLOUD.staffEmail || 'Staff account')}" disabled></div>
+        <div class="field"><label>كلمة المرور</label><input class="input" name="password" type="password" autocomplete="current-password" required></div>
+        <button class="btn primary full" type="submit">دخول الموظفين</button>
       </form>
-      <div class="notice info" style="margin-top:14px">${cloudEnabled() ? (isBarista ? 'الدخول متصل بقاعدة البيانات المشتركة.' : 'Shared database authentication is enabled.') : (isBarista ? 'وضع تجريبي محلي.' : 'Local demo login is active until the shared database is configured.')}</div>
-      <button class="btn ghost full" data-go="order" style="margin-top:10px">${isBarista ? 'العودة لصفحة الطلب ←' : '← Back to ordering'}</button>
-    </section></main>${bottomNav('login', isBarista)}</div>`;
+      <div class="notice info" style="margin-top:14px">${cloudEnabled() ? 'متصل بقاعدة بيانات Decima Pantry المشتركة.' : 'قاعدة البيانات المشتركة غير متصلة بعد.'}</div>
+      <button class="btn ghost full" data-go="order" style="margin-top:10px">العودة لصفحة الطلب ←</button>
+    </section></main>${bottomNav('login', true)}</div>`;
   }
+
 
   function renderBarista() {
     if (!canAccess('barista')) return go('login');
     const s = session();
     document.getElementById('app').innerHTML = `<div class="app-shell barista-shell" dir="rtl" lang="ar">${topbar('staff', true)}<main class="page">
-      <section class="staff-hero"><div><span class="eyebrow light">شاشة الباريستا</span><h1>طلبات المشروبات</h1><p>استلم الطلب الجديد ليقف الجرس، ثم علّم الطلب كمكتمل بعد التحضير.</p></div><div class="staff-actions"><button class="btn ghost" data-action="enable-bell">🔔 تفعيل / تجربة الجرس</button>${s.role === 'Admin' ? '<button class="btn ghost" data-go="admin">لوحة الإدارة</button>' : ''}</div></section>
+      <section class="staff-hero"><div><span class="eyebrow light">شاشة الباريستا</span><h1>طلبات المشروبات</h1><p>استلم الطلب الجديد ليقف الجرس، ثم علّم الطلب كمكتمل بعد التحضير.</p></div><div class="staff-actions"><button class="btn ghost" data-action="enable-bell">🔔 تفعيل / تجربة الجرس</button><button class="btn ghost" data-action="admin-access">🔒 إعدادات الإدارة</button></div></section>
       <section class="bell-status ${bellEnabled ? 'enabled' : ''} ${cloudEnabled() ? 'shared-online' : 'shared-offline'}"><span class="bell-dot"></span><strong>${bellEnabled ? 'جرس الطلبات مفعّل' : 'اضغط “تفعيل الجرس” مرة واحدة للسماح بالصوت في هذا المتصفح'}</strong><span>${cloudEnabled() ? 'متصل بالطلبات المشتركة — طلبات الهواتف ستظهر هنا تلقائياً' : '⚠ قاعدة البيانات المشتركة غير متصلة — الطلبات من الهواتف الأخرى لن تصل إلى هذا الجهاز'}</span></section>
       <section class="card panel" style="margin-top:16px"><div class="panel-head"><div><h2>الطلبات المباشرة</h2><p>يستمر جرس المقهى في الرنين ما دام هناك طلب جديد لم يتم استلامه.</p></div><button class="btn soft small" data-action="refresh">تحديث</button></div>${renderOrderColumns(true)}</section>
     </main>${bottomNav('staff', true)}</div>`;
@@ -369,13 +368,13 @@
   }
 
   function renderAdmin() {
-    if (!canAccess('admin')) return go('login');
+    if (!canAccess('admin')) return go('barista');
     const newCount = data.orders.filter(o => o.status === 'New').length;
     const preparing = data.orders.filter(o => o.status === 'Preparing').length;
     const completed = data.orders.filter(o => o.status === 'Completed').length;
     const low = data.materials.filter(m => m.active && Number(m.currentQuantity) <= Number(m.minimumQuantity)).length;
     document.getElementById('app').innerHTML = `<div class="app-shell">${topbar('staff')}<main class="page">
-      <section class="staff-hero"><div><span class="eyebrow light">ADMIN ACCESS</span><h1>Pantry dashboard</h1><p>Manage shared orders, bilingual drinks, recipes, ingredients, inventory and delivery locations.</p></div><div class="staff-actions"><button class="btn ghost" data-go="barista">Barista view</button><button class="btn ghost" data-go="order">Employee order view</button></div></section>
+      <section class="staff-hero"><div><span class="eyebrow light">ADMIN ACCESS</span><h1>Pantry dashboard</h1><p>Manage shared orders, bilingual drinks, recipes, ingredients, inventory and delivery locations.</p></div><div class="staff-actions"><button class="btn ghost" data-go="barista">Barista view</button><button class="btn ghost" data-go="order">Employee order view</button><button class="btn ghost" data-action="admin-lock">Lock Admin</button></div></section>
       <div class="stats-grid"><div class="card stat"><span>NEW ORDERS</span><strong>${newCount}</strong></div><div class="card stat"><span>PREPARING</span><strong>${preparing}</strong></div><div class="card stat"><span>COMPLETED</span><strong>${completed}</strong></div><div class="card stat"><span>LOW STOCK</span><strong>${low}</strong></div></div>
       <div class="tabs"><button class="tab ${adminTab === 'dashboard' ? 'active' : ''}" data-tab="dashboard">Dashboard</button><button class="tab ${adminTab === 'orders' ? 'active' : ''}" data-tab="orders">Orders</button><button class="tab ${adminTab === 'drinks' ? 'active' : ''}" data-tab="drinks">Drinks & recipes</button><button class="tab ${adminTab === 'inventory' ? 'active' : ''}" data-tab="inventory">Ingredients & inventory</button><button class="tab ${adminTab === 'locations' ? 'active' : ''}" data-tab="locations">Locations</button><button class="tab ${adminTab === 'cloud' ? 'active' : ''}" data-tab="cloud">Shared database</button></div>
       <div id="adminPanel">${renderAdminPanel()}</div>
@@ -631,30 +630,59 @@
 
   async function submitLogin(form) {
     const fd = new FormData(form);
-    const username = String(fd.get('username') || '').trim().toLowerCase();
     const password = String(fd.get('password') || '');
-    const role = loginRole;
-    if (username !== role) return toast(role === 'barista' ? 'اسم المستخدم غير صحيح.' : 'Incorrect username.', 'error');
-
-    if (cloudEnabled()) {
-      try {
-        setCloudBusy(true);
-        const email = role === 'admin' ? CLOUD.adminEmail : CLOUD.baristaEmail;
-        const auth = await supabasePasswordLogin(email, password);
-        setSession({ role: role === 'admin' ? 'Admin' : 'Barista', username: role, email, accessToken: auth.access_token, refreshToken: auth.refresh_token, expiresAt: Date.now() + Number(auth.expires_in || 3600) * 1000, loginAt: nowIso() });
-        await syncAllFromCloud(true);
-      } catch (err) { toast(role === 'barista' ? 'تعذر تسجيل الدخول. تحقق من كلمة المرور.' : 'Could not sign in. Check the password and Supabase staff user.', 'error'); return; }
-      finally { setCloudBusy(false); }
-    } else {
-      const expected = LOCAL_STAFF[role];
-      if (password !== expected.password) return toast(role === 'barista' ? 'كلمة المرور غير صحيحة.' : 'Incorrect password.', 'error');
-      setSession({ role: expected.role, username: expected.username, loginAt: nowIso() });
-    }
-
-    if (role === 'barista') enableBell(true);
-    toast(role === 'barista' ? 'تم تسجيل الدخول.' : 'Signed in as Admin.', 'success');
-    go(role === 'admin' ? 'admin' : 'barista');
+    if (!cloudEnabled()) return toast('Shared database is not configured.', 'error');
+    try {
+      setCloudBusy(true);
+      const auth = await supabasePasswordLogin(CLOUD.staffEmail, password);
+      setSession({ role: 'Staff', username: 'staff', email: CLOUD.staffEmail, accessToken: auth.access_token, refreshToken: auth.refresh_token, expiresAt: Date.now() + Number(auth.expires_in || 3600) * 1000, loginAt: nowIso() });
+      setAdminToken('');
+      await syncAllFromCloud(true);
+    } catch (err) { toast('تعذر تسجيل الدخول. تحقق من كلمة مرور حساب الموظفين.', 'error'); return; }
+    finally { setCloudBusy(false); }
+    enableBell(true);
+    toast('تم تسجيل الدخول.', 'success');
+    go('barista');
   }
+
+  async function unlockAdminMode() {
+    if (!session()?.accessToken) return go('login');
+    try {
+      setCloudBusy(true);
+      const configured = await cloudRequest('/rest/v1/rpc/pantry_admin_password_configured', { method: 'POST', body: {}, auth: true });
+      let password = '';
+      if (!configured) {
+        password = prompt('Create the internal Admin password (minimum 6 characters). This is separate from the staff login password.') || '';
+        if (!password) return;
+        const confirmPassword = prompt('Re-enter the new Admin password to confirm.') || '';
+        if (password !== confirmPassword) return toast('Admin passwords did not match.', 'error');
+        await cloudRequest('/rest/v1/rpc/pantry_admin_set_password', { method: 'POST', body: { p_password: password }, auth: true });
+        toast('Admin password created securely in Supabase.', 'success');
+      } else {
+        password = prompt('Enter the internal Admin password.') || '';
+        if (!password) return;
+      }
+      const token = await cloudRequest('/rest/v1/rpc/pantry_admin_unlock', { method: 'POST', body: { p_password: password }, auth: true });
+      if (!token) throw new Error('Admin unlock failed.');
+      setAdminToken(token);
+      await syncAllFromCloud(true);
+      go('admin');
+    } catch (err) {
+      const msg = String(err?.message || err);
+      toast(msg.includes('invalid_admin_password') ? 'Incorrect Admin password.' : humanCloudError(err), 'error');
+    } finally { setCloudBusy(false); }
+  }
+
+  async function lockAdminMode() {
+    const token = adminToken();
+    setAdminToken('');
+    if (token && session()?.accessToken) {
+      try { await cloudRequest('/rest/v1/rpc/pantry_admin_lock', { method: 'POST', body: { p_token: token }, auth: true }); } catch {}
+    }
+    toast('Admin mode locked.', 'success');
+    go('barista');
+  }
+
 
   async function submitMaterial(form) {
     const fd = new FormData(form);
@@ -708,17 +736,17 @@
     const inUse = data.drinks.some(d => d.ingredients.some(i => i.materialId === id));
     if (inUse) return toast('This ingredient is used by a drink recipe. Edit or remove that recipe first.', 'error');
     const m = data.materials.find(x => x.id === id); if (!m || !confirm(`Delete ${m.nameEn}?`)) return;
-    try { if (cloudEnabled()) await cloudRequest(`/rest/v1/pantry_materials?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', auth: true }); data.materials = data.materials.filter(x => x.id !== id); saveCache({ broadcast: !cloudEnabled() }); renderAdmin(); } catch (err) { toast(humanCloudError(err), 'error'); }
+    try { if (cloudEnabled()) await cloudRequest(`/rest/v1/pantry_materials?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', auth: true, admin: true }); data.materials = data.materials.filter(x => x.id !== id); saveCache({ broadcast: !cloudEnabled() }); renderAdmin(); } catch (err) { toast(humanCloudError(err), 'error'); }
   }
 
   async function deleteDrink(id) {
     const d = data.drinks.find(x => x.id === id); if (!d || !confirm(`Delete ${d.nameEn}?`)) return;
-    try { if (cloudEnabled()) await cloudRequest(`/rest/v1/pantry_drinks?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', auth: true }); data.drinks = data.drinks.filter(x => x.id !== id); saveCache({ broadcast: !cloudEnabled() }); renderAdmin(); } catch (err) { toast(humanCloudError(err), 'error'); }
+    try { if (cloudEnabled()) await cloudRequest(`/rest/v1/pantry_drinks?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', auth: true, admin: true }); data.drinks = data.drinks.filter(x => x.id !== id); saveCache({ broadcast: !cloudEnabled() }); renderAdmin(); } catch (err) { toast(humanCloudError(err), 'error'); }
   }
 
   async function deleteLocation(id) {
     const l = data.locations.find(x => x.id === id); if (!l || !confirm(`Delete ${l.nameEn}? Old orders will keep their saved location name.`)) return;
-    try { if (cloudEnabled()) await cloudRequest(`/rest/v1/pantry_locations?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', auth: true }); data.locations = data.locations.filter(x => x.id !== id); saveCache({ broadcast: !cloudEnabled() }); renderAdmin(); } catch (err) { toast(humanCloudError(err), 'error'); }
+    try { if (cloudEnabled()) await cloudRequest(`/rest/v1/pantry_locations?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE', auth: true, admin: true }); data.locations = data.locations.filter(x => x.id !== id); saveCache({ broadcast: !cloudEnabled() }); renderAdmin(); } catch (err) { toast(humanCloudError(err), 'error'); }
   }
 
   function resetDemo() {
@@ -780,17 +808,20 @@
   function setCloudBusy(v) { cloudBusy = v; document.body.classList.toggle('is-busy', Boolean(v)); }
 
   // ---------------------- Supabase REST/Auth adapter ----------------------
-  async function cloudRequest(path, { method = 'GET', body, auth = false, prefer = 'return=representation', retry = true } = {}) {
+  async function cloudRequest(path, { method = 'GET', body, auth = false, admin = false, prefer = 'return=representation', retry = true } = {}) {
     if (!cloudEnabled()) throw new Error('Shared database is not configured.');
     const s = session();
     if (auth && !s?.accessToken) throw new Error('Staff authentication is required.');
-    const headers = { apikey: CLOUD.anonKey, Authorization: `Bearer ${auth ? s.accessToken : CLOUD.anonKey}` };
+    if (admin && !adminToken()) throw new Error('Admin password is required.');
+    const headers = { apikey: CLOUD.anonKey };
+    if (auth) headers.Authorization = `Bearer ${s.accessToken}`;
+    if (admin) headers['x-admin-token'] = adminToken();
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (prefer) headers.Prefer = prefer;
     let res = await fetch(`${String(CLOUD.supabaseUrl).replace(/\/$/, '')}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     if (res.status === 401 && auth && retry && s?.refreshToken) {
       const refreshed = await refreshSupabaseSession();
-      if (refreshed) return cloudRequest(path, { method, body, auth, prefer, retry: false });
+      if (refreshed) return cloudRequest(path, { method, body, auth, admin, prefer, retry: false });
     }
     const text = await res.text();
     if (!res.ok) throw new Error(text || `${res.status} ${res.statusText}`);
@@ -849,29 +880,29 @@
   }
 
   async function cloudSaveMaterial(obj, editing) {
-    if (editing) return cloudRequest(`/rest/v1/pantry_materials?id=eq.${encodeURIComponent(obj.id)}`, { method: 'PATCH', body: toCloudMaterial(obj), auth: true });
-    return cloudRequest('/rest/v1/pantry_materials', { method: 'POST', body: toCloudMaterial(obj), auth: true });
+    if (editing) return cloudRequest(`/rest/v1/pantry_materials?id=eq.${encodeURIComponent(obj.id)}`, { method: 'PATCH', body: toCloudMaterial(obj), auth: true, admin: true });
+    return cloudRequest('/rest/v1/pantry_materials', { method: 'POST', body: toCloudMaterial(obj), auth: true, admin: true });
   }
 
   async function cloudSaveDrink(obj, editing) {
-    if (editing) return cloudRequest(`/rest/v1/pantry_drinks?id=eq.${encodeURIComponent(obj.id)}`, { method: 'PATCH', body: toCloudDrink(obj), auth: true });
-    return cloudRequest('/rest/v1/pantry_drinks', { method: 'POST', body: toCloudDrink(obj), auth: true });
+    if (editing) return cloudRequest(`/rest/v1/pantry_drinks?id=eq.${encodeURIComponent(obj.id)}`, { method: 'PATCH', body: toCloudDrink(obj), auth: true, admin: true });
+    return cloudRequest('/rest/v1/pantry_drinks', { method: 'POST', body: toCloudDrink(obj), auth: true, admin: true });
   }
 
   async function cloudSaveLocation(obj, editing) {
-    if (editing) return cloudRequest(`/rest/v1/pantry_locations?id=eq.${encodeURIComponent(obj.id)}`, { method: 'PATCH', body: toCloudLocation(obj), auth: true });
-    return cloudRequest('/rest/v1/pantry_locations', { method: 'POST', body: toCloudLocation(obj), auth: true });
+    if (editing) return cloudRequest(`/rest/v1/pantry_locations?id=eq.${encodeURIComponent(obj.id)}`, { method: 'PATCH', body: toCloudLocation(obj), auth: true, admin: true });
+    return cloudRequest('/rest/v1/pantry_locations', { method: 'POST', body: toCloudLocation(obj), auth: true, admin: true });
   }
 
   async function migrateLocalToCloud() {
-    if (!cloudEnabled() || session()?.role !== 'Admin') return toast('Admin cloud login is required.', 'error');
+    if (!cloudEnabled() || !adminToken()) return toast('Admin password is required.', 'error');
     if (!confirm('Copy the drinks, ingredients and locations currently stored in this browser into the shared database? Matching IDs will be updated.')) return;
     try {
       setCloudBusy(true);
       const source = normalizeData(preCloudLocalSnapshot);
-      await cloudRequest('/rest/v1/pantry_materials?on_conflict=id', { method: 'POST', body: source.materials.map(toCloudMaterial), auth: true, prefer: 'resolution=merge-duplicates,return=minimal' });
-      await cloudRequest('/rest/v1/pantry_drinks?on_conflict=id', { method: 'POST', body: source.drinks.map(toCloudDrink), auth: true, prefer: 'resolution=merge-duplicates,return=minimal' });
-      await cloudRequest('/rest/v1/pantry_locations?on_conflict=id', { method: 'POST', body: source.locations.map(toCloudLocation), auth: true, prefer: 'resolution=merge-duplicates,return=minimal' });
+      await cloudRequest('/rest/v1/pantry_materials?on_conflict=id', { method: 'POST', body: source.materials.map(toCloudMaterial), auth: true, admin: true, prefer: 'resolution=merge-duplicates,return=minimal' });
+      await cloudRequest('/rest/v1/pantry_drinks?on_conflict=id', { method: 'POST', body: source.drinks.map(toCloudDrink), auth: true, admin: true, prefer: 'resolution=merge-duplicates,return=minimal' });
+      await cloudRequest('/rest/v1/pantry_locations?on_conflict=id', { method: 'POST', body: source.locations.map(toCloudLocation), auth: true, admin: true, prefer: 'resolution=merge-duplicates,return=minimal' });
       await syncCatalogFromCloud(); toast('Existing browser pantry data copied to the shared database.', 'success'); renderAdmin();
     } catch (err) { toast(humanCloudError(err), 'error'); }
     finally { setCloudBusy(false); }
@@ -880,7 +911,10 @@
   function humanCloudError(err) {
     const msg = String(err?.message || err || 'Shared database error');
     if (msg.includes('insufficient_stock')) return 'Not enough inventory for this order.';
-    if (msg.includes('staff authentication')) return 'Please sign in again.';
+    if (msg.includes('staff authentication') || msg.includes('staff_required')) return 'Please sign in again.';
+    if (msg.includes('admin_password_too_short')) return 'Admin password must be at least 6 characters.';
+    if (msg.includes('admin_password_already_set')) return 'An Admin password has already been created.';
+    if (msg.includes('invalid_admin_password')) return 'Incorrect Admin password.';
     if (msg.length > 180) return 'Shared database request failed. Check cloud-config.js and the Supabase setup.';
     return msg;
   }
@@ -908,7 +942,7 @@
 
   // ---------------------- Events ----------------------
   document.addEventListener('click', async event => {
-    const goEl = event.target.closest('[data-go]'); if (goEl) return go(goEl.dataset.go);
+    const goEl = event.target.closest('[data-go]'); if (goEl) { if (goEl.dataset.go === 'admin' && !canAccess('admin')) return unlockAdminMode(); return go(goEl.dataset.go); }
     const drinkEl = event.target.closest('[data-drink]'); if (drinkEl) {
       orderUi.selectedDrinkId = drinkEl.dataset.drink; orderUi.customRequest = ''; renderOrder(); scrollToStep('locationStep'); return;
     }
@@ -929,6 +963,8 @@
       if (action === 'place-order') return placeOrder();
       if (action === 'logout') { clearBellLoop(); setSession(null); toast('Signed out.'); return go('order'); }
       if (action === 'enable-bell') { enableBell(true); updateBellLoop(); return; }
+      if (action === 'admin-access') return unlockAdminMode();
+      if (action === 'admin-lock') return lockAdminMode();
       if (action === 'refresh') { if (cloudEnabled()) { try { await syncAllFromCloud(true); } catch {} } return render(); }
       if (action === 'reset-demo') return resetDemo();
       if (action === 'add-ingredient') { ingredientDraft.push({ materialId: data.materials.find(m => m.active)?.id || '', amount: 1 }); return renderAdmin(); }
@@ -938,7 +974,6 @@
       if (action === 'sync-cloud') { try { setCloudBusy(true); await syncAllFromCloud(true); toast('Shared data synced.', 'success'); renderAdmin(); } catch (err) { toast(humanCloudError(err), 'error'); } finally { setCloudBusy(false); } return; }
       if (action === 'migrate-local') return migrateLocalToCloud();
     }
-    const roleEl = event.target.closest('[data-role]'); if (roleEl) { loginRole = roleEl.dataset.role; return renderLogin(); }
     const tabEl = event.target.closest('[data-tab]'); if (tabEl) { adminTab = tabEl.dataset.tab; return renderAdmin(); }
     const orderEl = event.target.closest('[data-order-action]'); if (orderEl) { const [action, id] = orderEl.dataset.orderAction.split(':'); return updateOrder(action, id); }
     const materialEdit = event.target.closest('[data-material-edit]'); if (materialEdit) { editingMaterialId = materialEdit.dataset.materialEdit; return renderAdmin(); }
@@ -978,7 +1013,7 @@
       sessionStorage.setItem(START_KEY, '1');
       if (!session()) history.replaceState(null, '', `${location.pathname}${location.search}#/order`);
     }
-    if (!location.hash) history.replaceState(null, '', session()?.role === 'Barista' ? '#/barista' : '#/order');
+    if (!location.hash) history.replaceState(null, '', session() ? '#/barista' : '#/order');
     render();
     if (cloudEnabled()) {
       try {
