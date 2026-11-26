@@ -63,8 +63,11 @@
     ['A', ['A1', 'A2', 'A3', 'A4']],
     ['B', ['B1', 'B2', 'B3', 'B4']],
     ['C', ['C1', 'C2', 'C3', 'C4']],
-    ['D', ['D1', 'D2', 'D3', 'D4']],
-    ['E', ['E1', 'E2', 'E3', 'E4']]
+    ['D', ['D1', 'D2', 'D3', 'D4']]
+  ];
+  const MAIN_HALL_PAIRS = [
+    ['A', 'B'],
+    ['C', 'D']
   ];
 
   const nowIso = () => new Date().toISOString();
@@ -325,9 +328,14 @@
       </main>${bottomNav('order')}</div>`;
   }
 
+  function workstationPod(pod, facing = 'left') {
+    const seats = MAIN_HALL_PODS.find(([id]) => id === pod)?.[1] || [];
+    return `<div class="desk-pod desk-pod-${facing}"><div class="desk-pod-label">Workstation ${pod}</div><div class="desk-seat-row desk-seat-row-top">${seats.slice(0, 2).map(s => deskSeat(s, 'top')).join('')}</div><div class="desk-table-shape"><span>WORKSTATION ${pod}</span><small>4 seats</small></div><div class="desk-seat-row desk-seat-row-bottom">${seats.slice(2).map(s => deskSeat(s, 'bottom')).join('')}</div></div>`;
+  }
+
   function renderDeskMap() {
-    const pods = MAIN_HALL_PODS.map(([pod, seats]) => `<div class="desk-pod"><div class="desk-pod-label">Desk cluster ${pod}</div><div class="desk-seat-row desk-seat-row-top">${seats.slice(0, 2).map(s => deskSeat(s, 'top')).join('')}</div><div class="desk-table-shape"><span>WORKSTATION</span><small>Desk cluster ${pod}</small></div><div class="desk-seat-row desk-seat-row-bottom">${seats.slice(2).map(s => deskSeat(s, 'bottom')).join('')}</div></div>`).join('');
-    return `<div class="main-hall-map"><div class="map-head"><div><span class="eyebrow">MAIN HALL</span><h3>Select your exact workstation</h3><p>Tap the chair number that matches where you are sitting.</p></div><div class="map-legend"><span><i></i> Available chair</span><span class="selected-legend"><i></i> Selected</span></div></div><div class="desk-pod-grid">${pods}</div></div>`;
+    const pairs = MAIN_HALL_PAIRS.map(([left, right], index) => `<section class="workstation-pair"><div class="workstation-pair-label">Pair ${index + 1}: Workstation ${left} <span aria-hidden="true">↔</span> Workstation ${right}</div><div class="workstation-pair-grid">${workstationPod(left, 'left')}<div class="pair-divider" aria-hidden="true"><span>↔</span><small>OPPOSITE</small></div>${workstationPod(right, 'right')}</div></section>`).join('');
+    return `<div class="main-hall-map"><div class="map-head"><div><span class="eyebrow">MAIN HALL</span><h3>Select your workstation</h3><p>There are exactly 4 workstations. Choose the chair code that matches where you are sitting.</p></div><div class="map-meta"><div class="workstation-total">4 workstations total</div><div class="map-legend"><span><i></i> Available</span><span class="selected-legend"><i></i> Selected</span></div></div></div><div class="workstation-pairs">${pairs}</div></div>`;
   }
 
   function deskSeat(id, side = 'top') {
@@ -396,8 +404,12 @@
 
   function renderStaffDeskMap(deskId, arabic = false) {
     if (!deskId) return '';
-    const pods = MAIN_HALL_PODS.map(([pod, seats]) => `<div class="staff-desk-pod"><div class="staff-desk-pod-label">${arabic ? `مجموعة ${esc(pod)}` : `Cluster ${esc(pod)}`}</div><div class="staff-desk-row">${seats.slice(0, 2).map(id => `<span class="staff-desk-seat ${id === deskId ? 'selected' : ''}"><i></i>${esc(id)}</span>`).join('')}</div><div class="staff-desk-table"></div><div class="staff-desk-row">${seats.slice(2).map(id => `<span class="staff-desk-seat ${id === deskId ? 'selected' : ''}"><i></i>${esc(id)}</span>`).join('')}</div></div>`).join('');
-    return `<div class="staff-main-hall-map"><div class="staff-map-title"><strong>${arabic ? 'مكان الطلب داخل القاعة الرئيسية' : 'Main Hall desk location'}</strong><span>${arabic ? `المكتب المحدد: ${esc(deskId)}` : `Selected desk: ${esc(deskId)}`}</span></div><div class="staff-desk-grid">${pods}</div></div>`;
+    const podHtml = pod => {
+      const seats = MAIN_HALL_PODS.find(([id]) => id === pod)?.[1] || [];
+      return `<div class="staff-desk-pod"><div class="staff-desk-pod-label">${arabic ? `محطة ${esc(pod)}` : `Workstation ${esc(pod)}`}</div><div class="staff-desk-row">${seats.slice(0, 2).map(id => `<span class="staff-desk-seat ${id === deskId ? 'selected' : ''}"><i></i>${esc(id)}</span>`).join('')}</div><div class="staff-desk-table"></div><div class="staff-desk-row">${seats.slice(2).map(id => `<span class="staff-desk-seat ${id === deskId ? 'selected' : ''}"><i></i>${esc(id)}</span>`).join('')}</div></div>`;
+    };
+    const pairs = MAIN_HALL_PAIRS.map(([left, right]) => `<div class="staff-workstation-pair">${podHtml(left)}<div class="staff-pair-arrow">↔</div>${podHtml(right)}</div>`).join('');
+    return `<div class="staff-main-hall-map"><div class="staff-map-title"><strong>${arabic ? 'مكان الطلب داخل القاعة الرئيسية' : 'Main Hall workstation location'}</strong><span>${arabic ? `المكتب المحدد: ${esc(deskId)}` : `Selected seat: ${esc(deskId)}`}</span></div><div class="staff-desk-grid">${pairs}</div></div>`;
   }
 
   function orderCardStaff(o, arabic) {

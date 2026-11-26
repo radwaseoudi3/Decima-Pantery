@@ -665,3 +665,179 @@ body.is-busy button { pointer-events: none; }
   .desk-seat strong { font-size: 11px; }
   .desk-seat-hint { font-size: 7px; }
 }
+
+/* Four-workstation paired floor plan: A opposite B, C opposite D */
+.map-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.workstation-total {
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: #f6eaea;
+  color: var(--burgundy);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
+.workstation-pairs {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+.workstation-pair {
+  padding: 12px;
+  border: 1px solid #e5d8d8;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #fbf8f8, #f5efef);
+  overflow: hidden;
+}
+.workstation-pair-label {
+  width: max-content;
+  max-width: 100%;
+  margin: 0 auto 9px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #f3e5e5;
+  color: #593d3e;
+  font-size: 10px;
+  font-weight: 900;
+  text-align: center;
+}
+.workstation-pair-label span { color: var(--burgundy); padding: 0 3px; }
+.workstation-pair-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.workstation-pair .desk-pod {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e1d4d4;
+  border-radius: 16px;
+  background: rgba(255,255,255,.9);
+  box-shadow: 0 6px 16px rgba(69,42,43,.045);
+}
+.workstation-pair .desk-pod-label {
+  margin-bottom: 8px;
+  color: #574b4b;
+  font-size: 10px;
+  letter-spacing: .05em;
+}
+.pair-divider {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--burgundy);
+}
+.pair-divider span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #f4e5e5;
+  font-size: 18px;
+  font-weight: 900;
+}
+.pair-divider small {
+  font-size: 6px;
+  font-weight: 900;
+  letter-spacing: .06em;
+  color: #8a7070;
+}
+.workstation-pair .desk-table-shape {
+  min-width: 0;
+  height: 58px;
+  margin: 2px 7px;
+}
+.workstation-pair .desk-table-shape span {
+  font-size: 8px;
+  letter-spacing: .07em;
+  white-space: nowrap;
+}
+.workstation-pair .desk-table-shape small { font-size: 7px; }
+.workstation-pair .desk-seat-row { gap: 7px; }
+.workstation-pair .desk-seat {
+  min-width: 0;
+  min-height: 62px;
+  padding-inline: 2px;
+}
+.workstation-pair .desk-seat strong { font-size: 12px; }
+
+/* Barista locator follows the same paired floor-plan logic. */
+.staff-desk-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+.staff-workstation-pair {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 16px minmax(0,1fr);
+  align-items: center;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid #e6dada;
+  border-radius: 10px;
+  background: rgba(255,255,255,.6);
+}
+.staff-pair-arrow {
+  color: var(--burgundy);
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .main-hall-map { padding: 10px; }
+  .map-head { gap: 10px; margin-bottom: 12px; }
+  .map-head h3 { font-size: 17px; }
+  .map-head p { font-size: 11px; line-height: 1.45; }
+  .map-meta { width: 100%; align-items: flex-start; }
+  .workstation-total { font-size: 9px; padding: 6px 10px; }
+  .workstation-pairs { gap: 11px; }
+  .workstation-pair { padding: 8px 6px 9px; border-radius: 15px; }
+  .workstation-pair-label { margin-bottom: 6px; padding: 5px 8px; font-size: 8px; }
+  .workstation-pair-grid {
+    grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1fr);
+    gap: 3px;
+  }
+  .workstation-pair .desk-pod { padding: 6px 4px 7px; border-radius: 12px; }
+  .workstation-pair .desk-pod-label { margin-bottom: 5px; font-size: 8px; }
+  .pair-divider span { width: 18px; height: 18px; font-size: 12px; }
+  .pair-divider small { display: none; }
+  .workstation-pair .desk-seat-row { gap: 2px; }
+  .workstation-pair .desk-table-shape { height: 44px; margin: 0 2px; border-radius: 8px; }
+  .workstation-pair .desk-table-shape::before,
+  .workstation-pair .desk-table-shape::after { width: 2px; top: 7px; bottom: 7px; }
+  .workstation-pair .desk-table-shape::before { left: 5px; }
+  .workstation-pair .desk-table-shape::after { right: 5px; }
+  .workstation-pair .desk-table-shape span { font-size: 6.5px; letter-spacing: .03em; }
+  .workstation-pair .desk-table-shape small { font-size: 6px; }
+  .workstation-pair .desk-seat { min-height: 54px; padding: 2px 0; }
+  .workstation-pair .chair-visual { width: 29px; height: 29px; }
+  .workstation-pair .chair-back { width: 23px; height: 11px; }
+  .workstation-pair .chair-seat-cushion { top: 10px; width: 27px; height: 13px; }
+  .workstation-pair .chair-base { top: 23px; width: 18px; height: 6px; }
+  .workstation-pair .chair-base::after { width: 21px; }
+  .workstation-pair .desk-seat strong { font-size: 10px; }
+  .workstation-pair .desk-seat-hint { display: none; }
+  .staff-workstation-pair { grid-template-columns: minmax(0,1fr) 13px minmax(0,1fr); gap: 2px; padding: 4px; }
+}
+
+@media (max-width: 380px) {
+  /* Keep each opposing pair side-by-side even on narrow phones. */
+  .workstation-pair-grid { grid-template-columns: minmax(0, 1fr) 14px minmax(0, 1fr); gap: 1px; }
+  .workstation-pair { padding-inline: 4px; }
+  .workstation-pair .desk-pod { padding-inline: 2px; }
+  .pair-divider span { width: 14px; height: 14px; font-size: 10px; }
+  .workstation-pair .chair-visual { transform: scale(.9); transform-origin: center; }
+  .workstation-pair .desk-seat-bottom .chair-visual { transform: rotate(180deg) scale(.9); }
+}
